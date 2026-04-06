@@ -235,6 +235,15 @@ const App = () => {
           >
             {copyStatus}
           </button>
+
+          <a
+            href="/infinite-spiral.html"
+            target="_blank"
+            rel="noreferrer"
+            className="block w-full text-center py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-semibold text-sm transition"
+          >
+            무한 확장 소용돌이 페이지 열기
+          </a>
         </div>
 
         <div className="relative group">

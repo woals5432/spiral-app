@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>무한 확장 텍스트 소용돌이 생성기</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      /* 모양이 깨지지 않게 폰트와 줄간격을 꽉 잡아줍니다 */
+      #output {
+        font-family: "Courier New", "돋움체", Dotum, monospace;
+        white-space: pre;
+        line-height: 1.2;
+        letter-spacing: 0;
+      }
+      /* 스크롤바 디자인 */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+    <div class="max-w-3xl w-full bg-white rounded-xl shadow-lg p-6">
+      <h1 class="text-2xl font-bold text-center mb-2 text-gray-800">
+        둥글게 말하기
+      </h1>
+      <p class="text-sm text-gray-500 text-center mb-6">
+        글자 수 제한 없이, 입력한 길이만큼 알아서 둥글게 말려들어갑니다.
+      </p>
+
+      <div class="space-y-4">
+        <!-- 텍스트 입력 영역 -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1"
+            >변환할 문구 (글자 수 무제한)</label
+          >
+          <textarea
+            id="inputText"
+            rows="3"
+            oninput="generateDynamicSpiral()"
+            class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+          ></textarea>
+          <div class="flex justify-end mt-1 text-sm text-gray-500">
+            <span id="charCount">0 글자</span>
+          </div>
+        </div>
+
+        <!-- 세부 설정 영역 -->
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
+        >
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >나선 간격 (줄 사이 여백)</label
+            >
+            <input
+              type="range"
+              id="spacingSlider"
+              min="0.2"
+              max="0.8"
+              step="0.05"
+              value="0.4"
+              oninput="generateDynamicSpiral()"
+              class="w-full cursor-pointer"
+            />
+            <div class="text-xs text-gray-500 text-center mt-1">
+              수치를 낮추면 촘촘해지고 높이면 널널해집니다.
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >읽는 방향</label
+            >
+            <select
+              id="directionSelect"
+              onchange="generateDynamicSpiral()"
+              class="w-full p-2 border border-gray-300 rounded focus:outline-none"
+            >
+              <option value="outsideIn">밖에서 ➔ 안으로 (추천)</option>
+              <option value="insideOut">안에서 ➔ 밖으로</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 결과 표시 영역 -->
+      <div class="mt-6">
+        <label class="block text-sm font-medium text-gray-700 mb-2"
+          >결과 (이 부분을 복사하세요)</label
+        >
+        <div
+          class="bg-gray-900 rounded-lg p-6 flex justify-center overflow-auto min-h-[250px] max-h-[500px] items-center border-4 border-gray-800"
+        >
+          <div id="output" class="text-green-400 text-lg"></div>
+        </div>
+
+        <button
+          onclick="copyToClipboard()"
+          class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg transition text-lg shadow-lg"
+        >
+          클립보드에 복사하기
+        </button>
+      </div>
+    </div>
+
+    <script>
+      function generateDynamicSpiral() {
+        const rawText = document.getElementById("inputText").value;
+        // 띄어쓰기를 없애고 배열로 만듭니다.
+        const text = rawText.replace(/\s/g, "").split("");
+        document.getElementById("charCount").innerText =
+          `총 ${text.length} 글자`;
+
+        if (text.length === 0) {
+          document.getElementById("output").innerText =
+            "텍스트를 입력해주세요.";
+          return;
+        }
+
+        // 설정값 가져오기
+        const spacing = parseFloat(
+          document.getElementById("spacingSlider").value,
+        );
+        const isOutsideIn =
+          document.getElementById("directionSelect").value === "outsideIn";
+
+        // 시계 방향으로 읽게 만들기 위한 알고리즘 방향 설정
+        // 밖에서 안으로 읽을 때 시계방향이 되려면, 중심에서 밖으로 그려나갈 때는 반시계방향으로 그려야 합니다.
+        const dir = isOutsideIn ? -1 : 1;
+
+        // 그리드 맵 준비
+        let gridMap = new Map();
+        let minX = 0,
+          maxX = 0,
+          minY = 0,
+          maxY = 0;
+
+        let r = 0;
+        let theta = -Math.PI / 2; // 12시 방향(Top)에서 시작
+        let totalTraveledAngle = 0;
+
+        // 수학적 소용돌이 (Archimedean spiral) 배치
+        for (let i = 0; i < text.length; i++) {
+          // 밖에서 안으로 읽으려면 텍스트의 뒤에서부터 중심(0,0)에 배치하며 바깥으로 나갑니다.
+          let char = isOutsideIn ? text[text.length - 1 - i] : text[i];
+
+          let placed = false;
+          while (!placed) {
+            let cx = Math.round(r * Math.cos(theta));
+            let cy = Math.round(r * Math.sin(theta));
+            let key = `${cx},${cy}`;
+
+            // 해당 좌표가 비어있다면 글자를 놓습니다.
+            if (!gridMap.has(key)) {
+              gridMap.set(key, char);
+              if (cx < minX) minX = cx;
+              if (cx > maxX) maxX = cx;
+              if (cy < minY) minY = cy;
+              if (cy > maxY) maxY = cy;
+              placed = true;
+            }
+
+            // 각도(theta)를 조금씩 변화시키며 빈 공간을 찾습니다.
+            // 중심부에선 크게, 바깥쪽에선 작게 움직여야 일정한 간격을 유지합니다.
+            let dTheta = 0.5 / Math.max(0.5, r);
+            theta += dTheta * dir;
+            totalTraveledAngle += dTheta;
+
+            // 반지름(r)은 회전한 총 각도에 비례하여 서서히 커집니다 (나선형 공식)
+            r = spacing * totalTraveledAngle;
+          }
+        }
+
+        // 맵에 기록된 좌표를 바탕으로 2차원 배열(도화지) 생성
+        const padding = 1; // 테두리 여백
+        const rows = maxY - minY + 1 + padding * 2;
+        const cols = maxX - minX + 1 + padding * 2;
+
+        // 전각 공백('　')으로 가득 찬 도화지 준비
+        let grid = Array.from({ length: rows }, () => Array(cols).fill("　"));
+
+        // 계산된 좌표에 글자 박아넣기
+        gridMap.forEach((char, key) => {
+          let [cx, cy] = key.split(",").map(Number);
+          grid[cy - minY + padding][cx - minX + padding] = char;
+        });
+
+        // 배열을 텍스트로 합쳐서 출력
+        const result = grid.map((row) => row.join("")).join("\n");
+        document.getElementById("output").innerText = result;
+      }
+
+      function copyToClipboard() {
+        const content = document.getElementById("output").innerText;
+        if (!content || content === "텍스트를 입력해주세요.") return;
+
+        const textArea = document.createElement("textarea");
+        textArea.value = content;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+
+        alert("복사 성공! 어떤 길이의 글자든 그대로 붙여넣기 하시면 됩니다.");
+      }
+
+      // 초기 실행
+      window.onload = generateDynamicSpiral;
+    </script>
+  </body>
+</html>
