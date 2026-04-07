@@ -34,10 +34,10 @@
   <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
     <div class="max-w-3xl w-full bg-white rounded-xl shadow-lg p-6">
       <h1 class="text-2xl font-bold text-center mb-2 text-gray-800">
-        둥글게 말하기
+        🌀 무한 소용돌이 생성기
       </h1>
       <p class="text-sm text-gray-500 text-center mb-6">
-        글자 수 제한 없이, 입력한 길이만큼 알아서 둥글게 말려들어갑니다.
+        글자 수 제한 없이, 입력한 길이만큼 부드럽고 둥글게 말려들어갑니다.
       </p>
 
       <div class="space-y-4">
@@ -59,24 +59,42 @@
 
         <!-- 세부 설정 영역 -->
         <div
-          class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
+          class="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-lg border border-gray-200"
         >
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-1"
-              >나선 간격 (줄 사이 여백)</label
+              >나선 간격</label
             >
             <input
               type="range"
               id="spacingSlider"
-              min="0.2"
-              max="0.8"
-              step="0.05"
-              value="0.4"
+              min="0.5"
+              max="2.5"
+              step="0.1"
+              value="1.2"
               oninput="generateDynamicSpiral()"
               class="w-full cursor-pointer"
             />
-            <div class="text-xs text-gray-500 text-center mt-1">
-              수치를 낮추면 촘촘해지고 높이면 널널해집니다.
+            <div class="text-[11px] text-gray-500 mt-1">
+              줄 사이의 여백 넓이
+            </div>
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1"
+              >비율 보정 (찌그러짐 방지)</label
+            >
+            <input
+              type="range"
+              id="ratioSlider"
+              min="0.8"
+              max="2.0"
+              step="0.1"
+              value="1.3"
+              oninput="generateDynamicSpiral()"
+              class="w-full cursor-pointer"
+            />
+            <div class="text-[11px] text-gray-500 mt-1">
+              결과가 타원이면 조절하세요
             </div>
           </div>
           <div>
@@ -86,7 +104,7 @@
             <select
               id="directionSelect"
               onchange="generateDynamicSpiral()"
-              class="w-full p-2 border border-gray-300 rounded focus:outline-none"
+              class="w-full p-2 border border-gray-300 rounded focus:outline-none text-sm"
             >
               <option value="outsideIn">밖에서 ➔ 안으로 (추천)</option>
               <option value="insideOut">안에서 ➔ 밖으로</option>
@@ -118,7 +136,6 @@
     <script>
       function generateDynamicSpiral() {
         const rawText = document.getElementById("inputText").value;
-        // 띄어쓰기를 없애고 배열로 만듭니다.
         const text = rawText.replace(/\s/g, "").split("");
         document.getElementById("charCount").innerText =
           `총 ${text.length} 글자`;
@@ -133,71 +150,83 @@
         const spacing = parseFloat(
           document.getElementById("spacingSlider").value,
         );
+        const ratioX = parseFloat(document.getElementById("ratioSlider").value); // 텍스트 환경 세로길이 보정
         const isOutsideIn =
           document.getElementById("directionSelect").value === "outsideIn";
-
-        // 시계 방향으로 읽게 만들기 위한 알고리즘 방향 설정
-        // 밖에서 안으로 읽을 때 시계방향이 되려면, 중심에서 밖으로 그려나갈 때는 반시계방향으로 그려야 합니다.
         const dir = isOutsideIn ? -1 : 1;
 
-        // 그리드 맵 준비
         let gridMap = new Map();
         let minX = 0,
           maxX = 0,
           minY = 0,
           maxY = 0;
 
-        let r = 0;
-        let theta = -Math.PI / 2; // 12시 방향(Top)에서 시작
-        let totalTraveledAngle = 0;
+        let theta = -Math.PI / 2; // 12시 방향에서 시작
+        let totalAngle = 0;
+        let r = 0.5; // 중심이 너무 뭉치지 않게 약간 띄움
 
-        // 수학적 소용돌이 (Archimedean spiral) 배치
+        let lastX = null;
+        let lastY = null;
+
+        // 정교하게 다듬어진 아르키메데스 나선 (Archimedean spiral) 배치
         for (let i = 0; i < text.length; i++) {
-          // 밖에서 안으로 읽으려면 텍스트의 뒤에서부터 중심(0,0)에 배치하며 바깥으로 나갑니다.
           let char = isOutsideIn ? text[text.length - 1 - i] : text[i];
-
           let placed = false;
+
+          // 궤적을 아주 미세하게 따라가면서 글자를 박을 적절한 자리를 찾습니다.
           while (!placed) {
-            let cx = Math.round(r * Math.cos(theta));
+            let cx = Math.round(r * ratioX * Math.cos(theta));
             let cy = Math.round(r * Math.sin(theta));
             let key = `${cx},${cy}`;
 
-            // 해당 좌표가 비어있다면 글자를 놓습니다.
+            // 해당 좌표가 비어있는지 확인
             if (!gridMap.has(key)) {
-              gridMap.set(key, char);
-              if (cx < minX) minX = cx;
-              if (cx > maxX) maxX = cx;
-              if (cy < minY) minY = cy;
-              if (cy > maxY) maxY = cy;
-              placed = true;
+              let isFarEnough = true;
+
+              // 이전 글자와의 거리를 계산하여 매끄러운 궤적 유지 (겹침/건너뜀 방지)
+              if (lastX !== null && lastY !== null) {
+                let distSq = Math.pow(cx - lastX, 2) + Math.pow(cy - lastY, 2);
+                // 거리가 1칸 이상 벌어졌을 때만 배치
+                if (distSq < 1) {
+                  isFarEnough = false;
+                }
+              }
+
+              if (isFarEnough) {
+                gridMap.set(key, char);
+                if (cx < minX) minX = cx;
+                if (cx > maxX) maxX = cx;
+                if (cy < minY) minY = cy;
+                if (cy > maxY) maxY = cy;
+
+                lastX = cx;
+                lastY = cy;
+                placed = true;
+              }
             }
 
-            // 각도(theta)를 조금씩 변화시키며 빈 공간을 찾습니다.
-            // 중심부에선 크게, 바깥쪽에선 작게 움직여야 일정한 간격을 유지합니다.
-            let dTheta = 0.5 / Math.max(0.5, r);
-            theta += dTheta * dir;
-            totalTraveledAngle += dTheta;
+            // 각도를 아주 미세하게 움직임 (바깥일수록 더 촘촘히 탐색)
+            let step = 0.1 / Math.max(1, r);
+            theta += step * dir;
+            totalAngle += step;
 
-            // 반지름(r)은 회전한 총 각도에 비례하여 서서히 커집니다 (나선형 공식)
-            r = spacing * totalTraveledAngle;
+            // 반경은 총 회전 각도에 비례하여 일정하게 증가
+            // spacing 값에 따라 한 바퀴 돌 때 넓어지는 폭이 결정됨
+            r = 0.5 + (spacing * totalAngle) / (2 * Math.PI);
           }
         }
 
-        // 맵에 기록된 좌표를 바탕으로 2차원 배열(도화지) 생성
-        const padding = 1; // 테두리 여백
+        const padding = 1;
         const rows = maxY - minY + 1 + padding * 2;
         const cols = maxX - minX + 1 + padding * 2;
 
-        // 전각 공백('　')으로 가득 찬 도화지 준비
         let grid = Array.from({ length: rows }, () => Array(cols).fill("　"));
 
-        // 계산된 좌표에 글자 박아넣기
         gridMap.forEach((char, key) => {
           let [cx, cy] = key.split(",").map(Number);
           grid[cy - minY + padding][cx - minX + padding] = char;
         });
 
-        // 배열을 텍스트로 합쳐서 출력
         const result = grid.map((row) => row.join("")).join("\n");
         document.getElementById("output").innerText = result;
       }
@@ -213,10 +242,9 @@
         document.execCommand("copy");
         document.body.removeChild(textArea);
 
-        alert("복사 성공! 어떤 길이의 글자든 그대로 붙여넣기 하시면 됩니다.");
+        // alert("복사 성공! 어떤 길이의 글자든 그대로 붙여넣기 하시면 됩니다.");
       }
 
-      // 초기 실행
       window.onload = generateDynamicSpiral;
     </script>
   </body>
